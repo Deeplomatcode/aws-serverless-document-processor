@@ -1,78 +1,116 @@
+Enhanced Documentation: Integrating Amazon Textract into Serverless Document Processing
+Overview
+This guide provides detailed instructions for integrating Amazon Textract into the automated document processing architecture. The solution processes uploaded documents (receipts, invoices) through AWS Textract for text extraction, stores results, and sends user notifications.
 
-# 📄 Integrating Amazon Textract into the Serverless Document Processor
+Architecture Integration Points
+Document Upload: Users upload files through web interface → stored in S3
 
-## 🔧 Step-by-Step Integration Guide
+Text Extraction: Lambda triggers Textract processing on new S3 uploads
 
-### 1. Set Up IAM Permissions
-Ensure your Lambda function has the necessary permissions to call Amazon Textract. Attach the following policy to your Lambda execution role:
+Data Storage: Extracted text stored in DynamoDB
 
-```json
+Notification: SES sends processing results to users
+
+Step-by-Step Integration Guide
+1. IAM Configuration
+Create IAM role for Lambda with these permissions:
+
+json
 {
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "textract:AnalyzeDocument",
-        "textract:DetectDocumentText"
-      ],
-      "Resource": "*"
-    }
-  ]
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "textract:AnalyzeDocument",
+                "textract:DetectDocumentText",
+                "textract:GetDocumentAnalysis"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "s3:GetObject",
+                "s3:PutObject"
+            ],
+            "Resource": "arn:aws:s3:::your-document-bucket/*"
+        }
+    ]
 }
-```
-
-### 2. Upload Document to S3
-Textract works with documents stored in S3. Upload your document (e.g., receipt or invoice) to a designated bucket.
-
-### 3. Invoke Textract from Lambda
-Here’s a sample Python snippet using `boto3`:
-
-```python
+2. Lambda Function Code (Python)
+python
 import boto3
+import json
 
 textract = boto3.client('textract')
+s3 = boto3.client('s3')
+dynamodb = boto3.resource('dynamodb')
+table = dynamodb.Table('ExtractedTextResults')
 
-def extract_text(bucket, document_key):
-    response = textract.detect_document_text(
-        Document={'S3Object': {'Bucket': bucket, 'Name': document_key}}
-    )
+def lambda_handler(event, context):
+    # Get bucket and key from S3 trigger event
+    bucket = event['Records'][0]['s3']['bucket']['name']
+    key = event['Records'][0]['s3']['object']['key']
+    
+    try:
+        # Call Textract
+        response = textract.detect_document_text(
+            Document={'S3Object': {'Bucket': bucket, 'Name': key}}
+        )
+        
+        # Extract text
+        extracted_text = ""
+        for item in response["Blocks"]:
+            if item["BlockType"] == "LINE":
+                extracted_text += item["Text"] + "\n"
+        
+        # Store in DynamoDB
+        table.put_item(
+            Item={
+                'document_id': key,
+                'extracted_text': extracted_text,
+                'processing_date': datetime.now().isoformat()
+            }
+        )
+        
+        # TODO: Add SNS/SES notification code here
+        
+        return {
+            'statusCode': 200,
+            'body': json.dumps('Processing complete')
+        }
+        
+    except Exception as e:
+        print(f"Error processing {key}: {str(e)}")
+        raise e
+3. S3 Event Configuration
+Configure S3 bucket to trigger Lambda function on object creation:
 
-    extracted_text = ""
-    for item in response["Blocks"]:
-        if item["BlockType"] == "LINE":
-            extracted_text += item["Text"] + "
-"
+bash
+aws s3api put-bucket-notification-configuration \
+  --bucket your-document-bucket \
+  --notification-configuration file://notification.json
+Common Issues & Troubleshooting
+Issue	Solution
+Textract returns empty response	Verify file format (PNG/JPEG/PDF) and quality
+Access denied errors	Check IAM role permissions for Textract and S3
+Lambda timeout	Increase timeout (Textract processing can take several seconds)
+Large file processing	Use async Textract API with SNS notifications
+Testing the Integration
+Upload a sample receipt to S3 bucket
 
-    return extracted_text
-```
+Check CloudWatch logs for Lambda execution
 
-### 4. Process Extracted Data
-You can store the extracted text in DynamoDB or trigger further processing (e.g., categorization, email notification via SES).
+Verify results in DynamoDB table
 
----
+Confirm notification delivery
 
-## 🧪 Sample Use Case
+Additional Resources
+Textract Documentation
 
-- **Trigger**: S3 upload event  
-- **Lambda**: Extract text using Textract  
-- **Store**: Save results in DynamoDB  
-- **Notify**: Send email via SES with extracted content
+Lambda S3 Trigger Setup
 
----
+Textract Boto3 Reference
 
-## 🛠️ Common Issues & Troubleshooting
-
-| Issue | Solution |
-|------|----------|
-| `AccessDeniedException` | Check IAM role permissions for Textract and S3 |
-| `InvalidS3ObjectException` | Ensure the document exists and is in supported format (PDF, PNG, JPEG) |
-| Textract returns empty | Try `AnalyzeDocument` for structured forms or tables |
-
----
-
-## ✅ Benefits
-Enhancing the documentation with this guide will:
-- Help users integrate Textract easily
-- Reduce troubleshooting time
-- Improve adoption of the serverless document processor
+This enhanced documentation provides the necessary technical details for implementing Textract integration while maintaining alignment with the existing serverless architecture.
