@@ -42,5 +42,10 @@ Automates receipt/document text extraction and notifications without managing in
 Project designed by **Mohammed Bakare**.  
 Inspired by AWS Well-Architected best practices and content from **@David Heys**, **@Kim Brooks**, and **@Lucy Wang (@techwithlucy)**.
 
+## 📌 Author
+
+**Mohammed Bakare**  
+AWS Certified Cloud Practitioner  
+[LinkedIn](https://www.linkedin.com/in/mohammed-bakare-94a655288)
 ---
 
